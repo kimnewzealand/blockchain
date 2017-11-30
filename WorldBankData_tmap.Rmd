@@ -1,0 +1,214 @@
+---
+title: "World Bank data with tmap"
+output: html_notebook
+Date: 30 November 2017
+AUthor: kimnewzealand
+---
+
+## SYNOPSIS
+
+We will be sourcing World Development Indicators from World Bank [open data](https://data.worldbank.org/) to compare communication technologies between countries in the developed, emerging and developing economies.
+
+With this data we will plot interactive thematic maps.
+
+### 
+
+ 
+
+* * *
+
+## Setup
+
+**LOAD R PACKAGES**
+
+```{r libraries,warnings=FALSE,include=FALSE}
+library(WDI) 
+library(wbstats)
+library(data.table)
+library(RColorBrewer)
+library(tmap)
+library(tmaptools)
+library(leaflet)
+library(leaflet.extras)
+library(htmlwidgets)
+
+```
+  
+### 
+
+ 
+
+* * *
+
+## Data
+
+**LOAD WORLD BANK DATA**
+
+First we will load our World Development Indicators (World Bank) data from the [WDI](https://cran.r-project.org/web/packages/WDI/index.html) R package. The wb function from [wbstats](https://cran.r-project.org/web/packages/wbstats/index.html) R package downloads the requested information using the World Bank API.
+
+```{r load WDI}
+# World Development Indicators (sourced frWorld Bank)
+wpp<-WDIsearch("per 100 people")
+head(wpp)
+# Note as per https://data.worldbank.org/indicator/IT.NET.USER.P2 The indicator IT.NET.USER.P2 does not exist or is no longer available
+# Note as per https://data.worldbank.org/indicator/IT.CMP.PCMP.P2 The indicator IT.CMP.PCMP.P2 does not exist or is no longer available
+# Source the indicators and the corresponding values into a dataset which is appended by rows
+commdata <- data.table(
+  wb(indicator = c("IT.CEL.SETS.P2", # Mobile cellular subscriptions (per 100 people)
+                   "IT.MLT.MAIN.P2", # Telephone lines (per 100 people)
+                   "IT.NET.BBND.P2"), # Fixed broadband subscriptions (per 100 people)
+     mrv = 1) # mrv is the number of Most Recent Values to return.
+)  
+# Take a look at the data summary
+str(commdata)
+# check that the data has loaded for each indicator
+table(commdata$indicatorID)
+```
+
+
+**LOAD WORLD MAP DATA**
+
+Next we will load the "World" data which is part of the [tmap](https://cran.r-project.org/web/packages/tmap/index.html) R package.
+
+```{r world dataset}
+# Load World dataset
+data("World")
+# Take a look at the class and structure of World
+str(World,max.level=2)
+# Take a look at the variables in the data slot
+str(World@data,max.level=2)
+```
+World is a class `r summary(World)[2]`.
+
+**CLEAN WDI DATA**
+
+The World Data Indicator dataset includes a country variable but this is at a different level and aggregation eg "Arab World", "High Income" to the "World" dataset so we need to remap the country variables with the wbcountries function from the wbstats R package.
+
+```{r clean WDI}
+# Download country mappings
+countries <- data.table(wbcountries())
+# Set keys to join the data sets
+setkey(commdata, iso2c)
+setkey(countries, iso2c)
+# Add regions to the data set, but remove aggregates
+commdata<- countries[commdata][ ! region %in% "Aggregates"]
+commdata <- commdata %>% 
+      dplyr::select(country,indicatorval=value,indicatorID,indicator) # rename the value to indicatorval
+# Check for missing values in our dataset by column
+apply(is.na(commdata),2,sum)
+```
+
+
+**MERGE DATASETS**
+
+Next we will append the commdata dataframe to the the World shape object using append_data function from the [tmaptools](https://cran.r-project.org/web/packages/tmaptools/index.html) R package. We will create different objects for each indicator so that there is a single country in each object to map. Assume that the countries that are not mapped do not have WDI data available.
+
+```{r append}
+# Match the variables name in the World object and country in the commdata for mobile indicator
+mobile <- append_data(World,commdata[commdata$indicatorID== "IT.CEL.SETS.P2",],key.shp="name",key.data="country") 
+# Match the telephone indicator
+telephone <- append_data(World,commdata[commdata$indicatorID== "IT.MLT.MAIN.P2",],key.shp="name",key.data="country")
+# Match the broadband indicator
+bband <- append_data(World,commdata[commdata$indicatorID== "IT.NET.BBND.P2",],key.shp="name",key.data="country")
+```
+
+
+### 
+
+ 
+
+* * *
+
+## Visualisations
+
+**EXPLORATORY DATA ANALYSIS**
+
+We will initially plot World using the [tmap](https://cran.r-project.org/web/packages/tmap/index.html) R Package plotting functions. This map will colour the economy variable provided in the World dataset.
+
+```{r first tmap}
+# Plot a static map
+tmap_mode("plot")
+
+worldecon <- tm_shape(World) + # Specifies the shape object
+      tm_borders() + # Add layer to the map with borders of each country polygon
+      tm_fill(col="economy") + # Add a layer with the fill mapped to the economy variable
+      tm_compass() + # Add compass icon
+      tmap_style("cobalt") + # Set the tmap style 
+      tm_layout(legend.position = c("left","bottom")) # Reset the legend to bottom left
+# Print map
+worldecon
+# Change the colour palatte with 7 steps on the RColorBrewer "YlOrBr" palette
+colpal <- rev(brewer.pal(n=7,"YlOrBr"))
+# Replot with a customised sequential palette
+worldecon2 <- tm_shape(World) + # Specifies the shape object
+      tm_borders() + # Add layer to the map with borders of each country polygon
+      tm_fill(col="economy",palette = colpal) + # Add a layer with the fill mapped to the economy variable
+      tm_compass() + # Add compass icon
+      tmap_style("cobalt") + # Set the tmap style 
+      tm_layout(legend.position = c("left","bottom")) # Reset the legend to bottom left
+worldecon2
+# Save the worldecon map to disk
+save_tmap(tm = worldecon2,"WorldEconomies2.png")
+```
+
+**DATA VISUALISATION**
+
+```{r}
+# Set mode to plot a static map with the default colour palette 
+tmap_mode("plot")
+# Plot the MOBILE indicator and use the default colour palette
+mobilemap<- tm_shape(mobile) + # Specifies the shape object
+      tm_borders() + # Add layer to the plot with borders of each country polygon
+      tm_fill(col="indicatorval", title=("Mobile (per 100 people)"),
+              legend.hist=FALSE) + # Add a layer with the fill mapped to the indicator value variable
+      tmap_style("cobalt") +
+      tm_layout(legend.position = c("left","bottom")) # Reset the legend to bottom left
+mobilemap
+# Change tmap to interactive
+tmap_mode("view")
+mobilemapinteract <- tmap_leaflet(mobilemap)
+# Reset the centering and zoom with leaflet setView
+mobilemapinteract<- mobilemapinteract %>% setView(0,0,zoom = 1)
+saveWidget(mobilemapinteract,"mobilemap.html")
+#
+# Set mode to plot a static map 
+tmap_mode("plot")
+# Change the colour palatte with 6 steps on the RColorBrewer "PuBu" palette
+colpal <- brewer.pal(n=6,"PuBu")
+# Plot the TELEPHONE indicator and use the customised colour palette
+telmap<-tm_shape(telephone) + # Specifies the shape object
+      tm_borders() + # Add layer to the plot with borders of each country polygon
+      tm_fill(col="indicatorval",palette = colpal, title=("Telephone (per 100 people)"),legend.hist=FALSE) + # Add a layer with the fill mapped to the indicator value variable
+      tmap_style("cobalt") +
+      tm_layout(legend.position = c("left","bottom")) # Reset the legend to bottom left
+telmap
+# Change tmap to interactive
+tmap_mode("view")
+# Saves as a leaflet map
+telmapinteract <- tmap_leaflet(telmap) 
+# Reset the centering and zoom with leaflet setView
+telmapinteract<- telmapinteract %>% setView(0,0,zoom = 1) 
+saveWidget(telmapinteract,"telmap.html")
+#
+# Set mode to plot a static map 
+tmap_mode("plot")
+# Change the colour palatte with 6 steps on the RColorBrewer "RdPu" palette
+colpal <- brewer.pal(n=6,"RdPu")
+# Plot the BROADBAND indicator and use the customised colour palette
+bbandmap <- tm_shape(bband) + # Specifies the shape object
+      tm_borders() + # Add layer to the plot with borders of each country polygon
+      tm_fill(col="indicatorval",palette = colpal, title=("Broadband (per 100 people)")) + # Add a layer with the fill mapped to the continent variable
+      tmap_style("cobalt") +
+      tm_layout(legend.position = c("left","bottom")) # Reset the legend to bottom left
+bbandmap
+# Change tmap to interactive
+tmap_mode("view")
+# Saves as a leaflet map
+bbandinteract <- tmap_leaflet(bbandmap) 
+# Reset the centering and zoom with leaflet setView
+bbandinteract <- bbandinteract %>% setView(0,0,zoom = 1) 
+saveWidget(bbandinteract,"bband.html")
+bbandinteract
+
+```
+
