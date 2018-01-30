@@ -1,0 +1,149 @@
+---
+title: "Simple Blockchain Example in R"
+output: html_document
+Date:  29 January 2018
+Author: kimnewzealand
+---
+
+## Synopsis
+
+
+This R markdown post was inspired by the R-bloggers post [Building your own blockchain in R.](https://www.r-bloggers.com/building-your-own-blockchain-in-r/)
+
+Blockchain technology, types such as bitcoin and ethereum and its associated terminology are ubiquitous in the media at the moment.
+
+The objective here is to learn how a generic blockchain works and understand some of the terminology through implementing a simple example. This generic example could then extended to various types of blockchains such as  distributed ledgers,  smart contracts or cryptocurrencies with network servers and appropriate privacy and security settings.
+
+This [post and it's visuals](https://medium.com/@lhartikk/a-blockchain-in-200-lines-of-code-963cc1cc0e54) has also been a useful reference.
+
+
+### 
+
+ 
+
+* * *
+
+## Setup
+
+```{r setup, include = FALSE, cache = FALSE}  
+knitr::opts_chunk$set(error = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+**LOAD R PACKAGES**
+
+```{r, message=FALSE, error=FALSE}
+library(tidyverse) # imports all tidyverse packages incuding dplyr, ggplot2
+library(digest) # Create hash function digests for R objects
+```
+
+## Background
+
+
+[Wikipedia](https://en.wikipedia.org/wiki/Blockchain) defines a blockchain as:
+
+> a continuously growing list of records, called blocks, which are linked and secured using cryptography. Each block typically contains a hash pointer as a link to a previous block, a timestamp and transaction data.
+
+> a decentralized and distributed digital ledger that is used to record transactions across many computers so that the record cannot be altered retroactively without the alteration of all subsequent blocks and the collusion of the network.
+
+> Every node or miner in a decentralized system has a copy of the blockchain. Data quality is maintained by massive database replication and computational trust. No centralized "official" copy exists and no user is "trusted" more than any other. 
+
+### Defining a Blockchain Structure
+
+**1. BLOCK**
+
+Each block is created by consensus in the network and contains the following:
+
+- Index  
+- Timestamp  
+- Transactions  
+- Consensus system 
+- Hash of the previous block
+- Hash of the current block
+
+**2. HASH**
+
+Each block in the blockchain needs to be "hashed" or chained to keep the integrity of the data in the block. The [digest](https://cran.r-project.org/web/packages/digest/index.html) R package has the digest function which applies a cryptographical hash function to arbitrary R objects using algorithms.
+
+**3. TRANSACTIONS**
+
+Transactions are block data such as ledger facts, assets, conditions or executable programs.
+
+**4. CONSENSUS SYSTEM**
+
+A consensus system of algorithms seeks to guarantee integrity of the chain for the nodes to agree on the ordering of the blocks. 
+
+In crypocurrencies proofs such as "mining" algorithms Proof of Stake (PoS) or Proof of Work (PoW) determine the consensus.
+
+**5. NODES**
+
+Nodes are members of the distributed network are anonymous individuals, typically a computer in the network. 
+
+At any time the blockchain is a single chain of blocks, with a copy read and held by each node.
+
+In cryptocurrencies, nodes can also add blocks for a fee, or be the miners that look for blocks and recuperate the fees from that block.
+
+In this example there is a single node and no fees.
+
+### Create a blockchain
+
+Initially, we need to create an empty blockchain with the following: 
+
+- a list of blocks (the chain) 
+- a list of nodes.
+
+[Lists](http://r4ds.had.co.nz/lists.html) are useful R objects as they 
+
+> model objects that are like trees. You can create a hierarchical structure with a list because unlike vectors, a list can contain other lists.
+
+```{r create blockchain list}
+# Create the empty blockchain as embedded lists
+blockchain <- list(
+    chain = list(),
+    nodes = list()
+  )
+# Review the blockchain 
+str(blockchain)
+```
+
+Add the node name to the blockchain.
+
+```{r node}
+# Add the node name
+blockchain$nodes <- "Betty's PC"
+# Review the blockchain so far
+str(blockchain)
+```
+
+
+Next we will create a function that creates a new block calculating the hash with the digest function from the [digest R package](https://CRAN.R-project.org/package=digest). The first block is called the Genesis block.
+
+```{r new block}
+# Create a new block in the Blockchain function
+nextBlock <- function (previousHash, transactions){
+  thisHash <- digest((length (blockchain$chain) + 1),algo="sha256")
+  block <- list('block' = list('index' = length (blockchain$chain), 
+                                'timestamp' = Sys.time() , 
+                                'transactions' =  transactions,
+                                'thisHash' = thisHash, 
+                                'previousHash' = previousHash))
+    blockchain$chain <- c(blockchain$chain, block)
+}
+# Create the first block, the Genesis block, setting previous hash to 0  and thisHash to the calculated hashBlock
+blockchain$chain$block<- nextBlock(previousHash=0, transactions="Genesis block") 
+# Review the blockchain so far, with block 1
+str(blockchain)
+```
+
+Now create the second block reusing the existing function, nextBlock.
+
+```{r next block}
+# Create the next block, setting this block's hash to hashBlock and prevhashBlock to the Genesis block's hash
+prevhashBlock <- blockchain$chain$block[1]$block$thisHash
+blockchain$chain$block <- nextBlock(previousHash=prevhashBlock,transactions="FACT ABC") 
+# Review the blockchain so far
+str(blockchain)
+```
+
+
+  
